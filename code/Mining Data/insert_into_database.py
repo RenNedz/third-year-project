@@ -1,0 +1,167 @@
+import mysql.connector
+from mysql.connector import errorcode
+from File_manager import File_manager
+import subprocess
+
+global currentId #Used to add foreign key for tables Hashtags and Mentions
+currentId = 0
+
+class GetArguments:
+
+    def tweet(self, line):
+        start = 5 #Getting text
+        end = line.find(" Language")
+        tweet_data = (line[start:end],)
+        line = line[end + 10:len(line)] #Getting Language
+        start = 0
+        end = line.find(" ")
+        tweet_data += (line[start:end],)
+        line = line[end + 4:len(line)] #Getting tweet ID
+        start = 0
+        end = line.find(" ")
+        tweet_data += (line[start:end],)
+        global currentId #Making currentId global so that it can be added in with mentions and hashtags as foreign key
+        currentId = line[start:end]
+        line = line[line.find("RT count:") + 9: len(line)] #Getting retweet_count
+        start = 0
+        end = line.find(" ")
+        tweet_data += (line[start:end],)
+        line = line[line.find("Country:") + 9: len(line)] #Getting Country
+        start = 0
+        end = line.find(" C")
+        if line[start:end] == "None":
+            tweet_data += (None,)
+        else:
+            tweet_data += (line[start:end],)
+        line = line[line.find("City/Town:") + 11: len(line)] #Getting City
+        start = 0
+        end = line.find(" D")
+        if line[start:end] == "None":
+        	tweet_data += (None,)
+        else:
+        	tweet_data += (line[start:end],)
+        line = line[line.find("Date:") + 5: len(line)]#Getting Date
+        start = 0
+        end = line.find(" Stance:")
+        tweet_data += self.format_date(line[start:end]) #Date needs to be formatted for mysql
+        line = line[end + 9 : len(line)]
+        start = 0
+        end = line.find(" Sentiment:") #Getting sentiment
+        if line[start:end] == "None":
+        	tweet_data += (None,)
+        else:
+        	tweet_data += (line[start:end],) 
+        start = end + 12 #Getting stance
+        end = line.find("\n")
+        tweet_data += (line[start:end],)
+        return tweet_data
+
+    #Date needs to be formatted to MySQL acceptable values
+    def format_date(self, date):
+        formatted_date = date[len(date) -4: len(date)]
+        dict ={
+                'Jan': "01",
+                'Feb': "02",
+                'Mar': "03",
+                'Apr': "04",
+                'May': "05",
+                'Jun': "06",
+                'Jul': "07",
+                'Aug': "08",
+                'Sep': "09",
+                'Oct': "10",
+                'Nov': "11",
+                'Dec': "12",
+                }
+        formatted_date += dict.get(date[0:3],)
+        formatted_date += date[4:6]
+        formatted_date = (formatted_date,)
+        return formatted_date
+
+    def mention(self, line, count):
+        #count is needed as when digit becomes double or triple e.g. not 1 but 100
+        #otherwise the string offset is wrong without checking length of number
+        mention_data = ()
+        starting_string = "M_id" + str(count) + ": "
+        if line.find(starting_string) == -1: #No mentions
+            return mention_data
+        else:
+            offset = len(str(count))
+            line = line[line.find(starting_string) + 6 + offset: len(line)] #Id of user mentioned
+            start = 0
+            end = line.find(" ")
+            mention_data = (line[start:end],)
+            mention_data += (currentId,) #Id of tweet
+            line = line[end + 12 + offset: len(line)]
+            start = 0
+            end = line.find(" ")
+            mention_data += (line[start:end],) #Add screen name
+            line = line[end + 14 + offset: len(line)]
+            start = 0
+            end = line.find(" ")
+            mention_data += (line[start:end],) #Add user name
+            return mention_data
+
+    def hashtag(self, line, count):
+        hashtag_data = ()
+        starting_string = "Htag" + str(count) + ": "
+        if line.find(starting_string) == -1: #No hashtags
+            return hashtag_data
+        else:
+            offset = len(str(count))
+            line = line[line.find(starting_string) + 6 + offset: len(line)] #Find hashtag
+            start = 0
+            end = line.find(" ")
+            hashtag_data = (line[start:end],)
+            return hashtag_data
+
+configuration = { #change this appropriate to the database & user being used
+  'user': 'renatas',
+  'password': 'password',
+  'host': '127.0.0.1',
+  'database': 'tweets',
+}
+
+try:
+  connection = mysql.connector.connect(**configuration)
+except mysql.connector.Error as error:
+  if error.errno == errorcode.ER_ACCESS_DENIED_ERROR:
+    print("Incorrect username or password")
+  elif err.errno == errorcode.ER_BAD_DB_ERROR:
+    print("Database does not exist")
+  else:
+    print(err)
+else:
+    #open file to get data to be inserted from from
+    (exists, in_file) = File_manager.open_for_insertion()
+    if exists == True:
+            cursor = connection.cursor()
+            getArguments = GetArguments() #Get arguments to use in MySQL statements
+            #declare MySQL Statements
+            add_tweet = ("INSERT IGNORE INTO Tweet (text, language, id, retweet_count, country, city, date, stance, sentiment) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)")
+            add_mention = ("INSERT IGNORE INTO Mentions (id_mentioned, tweet_id, screen_name, user_name) VALUES (%s, %s, %s, %s)")
+            add_hashtag = ("INSERT IGNORE INTO Hashtags (tweet_id, hashtag) VALUES (%s, %s)")
+            lines = in_file.readlines()
+            for i in range(0, len(lines)):
+                line = lines[i] #read a line, pass it to getArguments
+                tweet_data = getArguments.tweet(line) #get arguments, returns tuples of arguments
+                cursor.execute(add_tweet, tweet_data) #Commit to database
+                connection.commit()
+                count = 1
+                mention_data = getArguments.mention(line, count) #get mention
+                while mention_data: #if mention empty move skips
+                    count += 1
+                    cursor.execute(add_mention, mention_data) #insert into database
+                    mention_data = getArguments.mention(line, count)  #get mention again
+                count = 1
+                hashtag_data = getArguments.hashtag(line, count)
+                while hashtag_data: #same process as mention
+                    hashtag_data = (currentId,) + hashtag_data
+                    count += 1
+                    cursor.execute(add_hashtag, hashtag_data)
+                    hashtag_data = getArguments.hashtag(line, count)
+                connection.commit()
+            cursor.close() #Close connections, delete input file 
+            connection.close()
+            in_file.close()
+            File_manager.remove_file(in_file)

@@ -1,0 +1,22 @@
+import os.path
+
+from twarc import Twarc
+from File_manager import File_manager
+#usage, takes in a file called tags with name or hashtag to search by per line. null at the end of the file
+
+
+t = Twarc('4lJGm5YUrXgtwfMUmlo9L4KgH','YIYeIiZGCJpolIASa56eqLJsEa54vGKFt07CkTai3SWKoCPx3w','276679861-dgKpojdDSWRutxEG7NH2A2ZgD7xHtzcuwOisMo1T', '4ckJoGnRm5defgDegfV4opPETmarGuNQr9U6pAVEwR9sT')
+in_file = open("tags","r" , 1) #open file which contains tweets hashtags or word by which to download
+search_tags = in_file.read()
+in_file.close()
+search_by = search_tags[0:search_tags.find("\n")]
+while search_by != "null":
+    out_file = File_manager.open_for_download()
+    for tweet in t.search(search_by):
+        tweet = str(tweet)
+        out_file.write(tweet + "\n")
+    out_file.close()
+    search_tags = search_tags[search_tags.find("\n") +1 : len(search_tags)]
+    search_by = search_tags[0:search_tags.find("\n")]
+
+#for tweet in t.search("ucd marian"):

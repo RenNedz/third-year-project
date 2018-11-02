@@ -1,0 +1,10 @@
+class File_manager:
+
+    def open_for_writing(self):
+        file_name = "tweets1" #file might exist, if it does create different file
+        while os.path.isfile(file_name):
+            count = 2
+            file_name = file_name[0:6] + str(count)
+            count += 1
+        out_file = open(file_name, "w",1)
+        return out_file
